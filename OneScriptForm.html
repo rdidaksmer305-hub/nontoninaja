@@ -3,104 +3,160 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTube Auto-Playlist</title>
+    <title>YouTube Shorts Ultimate Player</title>
     <style>
-        body { font-family: sans-serif; background-color: #1a1a1a; color: white; display: flex; justify-content: center; padding: 40px; }
-        .container { width: 100%; max-width: 900px; display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
-        .main-player { background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 16/9; }
-        .controls { background: #252525; padding: 20px; border-radius: 8px; }
-        textarea { width: 100%; height: 150px; background: #333; color: white; border: 1px solid #444; border-radius: 5px; padding: 10px; resize: none; margin-bottom: 10px; }
-        button { width: 100%; padding: 12px; background: #ff0000; border: none; color: white; font-weight: bold; cursor: pointer; border-radius: 5px; }
-        button:hover { background: #cc0000; }
-        .playlist-info { margin-top: 15px; font-size: 14px; color: #aaa; }
-        #current-status { color: #00ff00; font-weight: bold; }
+        :root { --primary: #ff0000; --bg: #0f0f0f; --panel: #1e1e1e; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); color: white; margin: 0; display: flex; justify-content: center; min-height: 100vh; }
         
-        @media (max-width: 768px) { .container { grid-template-columns: 1fr; } }
+        .container { width: 100%; max-width: 1200px; display: grid; grid-template-columns: 400px 1fr 350px; gap: 20px; padding: 20px; box-sizing: border-box; }
+
+        /* Shorts Player (Vertikal) */
+        .player-section { display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        .shorts-wrapper { 
+            width: 320px; height: 570px; /* Rasio 9:16 */
+            background: #000; border-radius: 20px; overflow: hidden; 
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8); border: 4px solid #333;
+        }
+
+        /* Sidebar Control */
+        .sidebar { background: var(--panel); padding: 20px; border-radius: 15px; display: flex; flex-direction: column; gap: 12px; }
+        textarea { 
+            width: 100%; background: #2b2b2b; color: #fff; border: 1px solid #444; 
+            border-radius: 8px; padding: 10px; resize: none; box-sizing: border-box; font-size: 13px;
+        }
+        .input-group label { font-size: 12px; color: #aaa; margin-bottom: 5px; display: block; }
+
+        /* Rekomendasi / Info Section */
+        .recommendation-panel { background: var(--panel); padding: 20px; border-radius: 15px; border-top: 4px solid var(--primary); }
+        .rec-item { background: #2b2b2b; padding: 15px; border-radius: 8px; margin-top: 10px; line-height: 1.5; }
+
+        /* Buttons */
+        .btn { padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; transition: 0.2s; }
+        .btn-play { background: var(--primary); color: white; }
+        .btn-nav { background: #444; color: white; margin-top: 5px; }
+        .btn:hover { opacity: 0.8; }
+
+        /* Status */
+        .badge { background: #333; padding: 5px 10px; border-radius: 4px; font-size: 12px; color: #00ff00; }
+
+        @media (max-width: 1100px) { .container { grid-template-columns: 1fr; } .shorts-wrapper { width: 100%; max-width: 320px; } }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="player-section">
-        <div class="main-player">
-            <div id="player"></div>
+    <div class="sidebar">
+        <h3 style="margin:0">Shorts Playlist</h3>
+        <div class="input-group">
+            <label>Link Shorts (1 per baris):</label>
+            <textarea id="listInput" placeholder="https://youtube.com/shorts/ID_VIDEO" style="height: 150px;"></textarea>
         </div>
-        <div class="playlist-info">
-            Status: <span id="current-status">Menunggu Input...</span><br>
-            Video ke- <span id="video-index">0</span> dari <span id="total-video">0</span>
+        <div class="input-group">
+            <label>Rekomendasi/Catatan (1 per baris):</label>
+            <textarea id="recInput" placeholder="Tonton video ini karena seru!&#10;Inspirasi pagi..." style="height: 150px;"></textarea>
+        </div>
+        
+        <button class="btn btn-play" onclick="initApp()">MULAI SEKARANG</button>
+        <button class="btn btn-nav" onclick="shuffle()">SHUFFLE</button>
+        
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button class="btn btn-nav" onclick="prev()">⏮ Prev</button>
+            <button class="btn btn-nav" onclick="next()">Next ⏭</button>
         </div>
     </div>
 
-    <div class="controls">
-        <h3>Daftar Putar</h3>
-        <p style="font-size: 12px;">Masukkan link YouTube (1 baris 1 link):</p>
-        <textarea id="videoList" placeholder="https://youtube.com/watch?v=abc&#10;https://youtube.com/watch?v=xyz"></textarea>
-        <button onclick="startPlaylist()">Mulai Putar Semua</button>
+    <div class="player-section">
+        <div class="shorts-wrapper">
+            <div id="player"></div>
+        </div>
+        <div class="badge" id="counter">Menunggu...</div>
+    </div>
+
+    <div class="recommendation-panel">
+        <h4 style="margin:0">Rekomendasi Tayangan</h4>
+        <div id="recDisplay" class="rec-item">
+            Masukkan daftar video dan rekomendasi di kolom kiri, lalu klik mulai.
+        </div>
     </div>
 </div>
 
 <script>
-    var player;
-    var videoQueue = [];
-    var currentIndex = 0;
+    let player;
+    let videos = [];
+    let recs = [];
+    let currentIdx = 0;
 
-    var tag = document.createElement('script');
+    // Load API
+    let tag = document.createElement('script');
     tag.src = "https://www.youtube.com/iframe_api";
-    var firstScriptTag = document.getElementsByTagName('script')[0];
-    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    document.head.appendChild(tag);
 
     function extractId(url) {
-        var regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-        var match = url.trim().match(regExp);
-        return (match && match[2].length == 11) ? match[2] : null;
+        let match = url.trim().match(/(shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+        return (match) ? match[2] : null;
     }
 
-    function startPlaylist() {
-        var lines = document.getElementById('videoList').value.split('\n');
-        videoQueue = lines.map(line => extractId(line)).filter(id => id !== null);
+    function initApp() {
+        let lines = document.getElementById('listInput').value.split('\n');
+        let rLines = document.getElementById('recInput').value.split('\n');
         
-        if (videoQueue.length === 0) {
-            alert("Masukkan minimal satu link YouTube yang valid!");
-            return;
-        }
+        videos = lines.map(l => extractId(l)).filter(id => id !== null);
+        recs = rLines.filter(r => r.trim() !== "");
 
-        currentIndex = 0;
-        updateUI();
-        playVideoAtIndex(currentIndex);
+        if (videos.length === 0) return alert("Masukkan minimal satu link Shorts!");
+        
+        currentIdx = 0;
+        play();
     }
 
-    function playVideoAtIndex(index) {
-        if (index >= videoQueue.length) {
-            document.getElementById('current-status').innerText = "Selesai Memutar Semua";
-            return;
-        }
+    function play() {
+        let id = videos[currentIdx];
+        let currentRec = recs[currentIdx] || "Tidak ada rekomendasi untuk video ini.";
 
-        var videoId = videoQueue[index];
-        
         if (!player) {
             player = new YT.Player('player', {
-                height: '100%', width: '100%', videoId: videoId,
-                playerVars: { 'autoplay': 1, 'mute': 0, 'rel': 0 },
-                events: { 'onStateChange': onPlayerStateChange, 'onReady': (e) => e.target.playVideo() }
+                height: '100%', width: '100%', videoId: id,
+                playerVars: { 
+                    'autoplay': 1, 'rel': 0, 'modestbranding': 1,
+                    'origin': window.location.origin 
+                },
+                events: { 
+                    'onStateChange': (e) => { if(e.data === 0) next(); },
+                    'onReady': (e) => e.target.playVideo()
+                }
             });
         } else {
-            player.loadVideoById(videoId);
+            player.loadVideoById(id);
         }
-        updateUI();
+        
+        // Update UI
+        document.getElementById('recDisplay').innerText = currentRec;
+        document.getElementById('counter').innerText = `Shorts: ${currentIdx + 1} / ${videos.length}`;
     }
 
-    function onPlayerStateChange(event) {
-        // Jika video berakhir (status 0), putar video berikutnya
-        if (event.data === YT.PlayerState.ENDED) {
-            currentIndex++;
-            playVideoAtIndex(currentIndex);
+    function next() {
+        if (currentIdx < videos.length - 1) {
+            currentIdx++;
+            play();
         }
     }
 
-    function updateUI() {
-        document.getElementById('current-status').innerText = "Sedang Memutar...";
-        document.getElementById('video-index').innerText = currentIndex + 1;
-        document.getElementById('total-video').innerText = videoQueue.length;
+    function prev() {
+        if (currentIdx > 0) {
+            currentIdx--;
+            play();
+        }
+    }
+
+    function shuffle() {
+        if (videos.length < 2) return;
+        for (let i = videos.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [videos[i], videos[j]] = [videos[j], videos[i]];
+            if (recs[i] && recs[j]) [recs[i], recs[j]] = [recs[j], recs[i]];
+        }
+        currentIdx = 0;
+        play();
     }
 </script>
 
